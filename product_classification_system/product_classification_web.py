@@ -22,11 +22,56 @@ from collections import defaultdict
 from typing import Dict, List, Tuple, Optional, Any
 import gc
 from multiprocessing import Pool, cpu_count
+from concurrent.futures import ProcessPoolExecutor, as_completed
 import functools
 
 # 自作モジュールのインポート
 from base_classifier import BaseClassifier
 from classifiers import LinearSVCClassifier, LightGBMClassifier
+
+
+# マルチプロセス用のグローバル変数（pickle化のため）
+_global_classifier = None
+_global_feature_cols = None
+_global_target_cols = None
+_global_use_hierarchical = None
+
+
+def _init_worker(classifier_state, feature_cols, target_cols, use_hierarchical):
+    """ワーカープロセスの初期化"""
+    global _global_classifier, _global_feature_cols, _global_target_cols, _global_use_hierarchical
+
+    # 分類器を復元
+    import pickle
+    _global_classifier = pickle.loads(classifier_state)
+    _global_feature_cols = feature_cols
+    _global_target_cols = target_cols
+    _global_use_hierarchical = use_hierarchical
+
+
+def _process_batch(batch_data):
+    """バッチ処理（ワーカープロセスで実行）"""
+    global _global_classifier, _global_feature_cols, _global_target_cols, _global_use_hierarchical
+
+    batch_df, start_idx = batch_data
+
+    try:
+        # 数値特徴量を抽出
+        batch_df = _global_classifier.extract_numeric_features(batch_df)
+
+        # 特徴量作成
+        X = _global_classifier.prepare_features(batch_df, _global_feature_cols)
+
+        # 予測実行
+        if _global_use_hierarchical:
+            result = _global_classifier._hierarchical_predict(batch_df.copy(), X, _global_target_cols)
+        else:
+            result = _global_classifier._standard_predict(batch_df.copy(), X, _global_target_cols)
+
+        return (start_idx, result)
+    except Exception as e:
+        logger.error(f"バッチ処理エラー（インデックス{start_idx}）: {e}")
+        return (start_idx, batch_df.copy())
 
 warnings.filterwarnings('ignore')
 
@@ -491,15 +536,69 @@ class ProductClassifierWeb:
         use_hierarchical: bool,
         batch_size: int
     ) -> List[pd.DataFrame]:
-        """並列予測を実行（multiprocessing.Pool使用）
+        """並列予測を実行（multiprocessing.Pool使用・完全実装）
 
-        注意: このメソッドは現在シングルプロセスで実行されます。
-        マルチプロセス化にはpickle化の問題を解決する必要があります。
+        大量データを複数のCPUコアで並列処理します。
         """
-        # TODO: マルチプロセス化の実装（現在はシングルプロセスで実行）
-        # pickleエラーを回避するため、シングルプロセスで実行
-        logger.warning("マルチプロセス予測は現在未実装のため、シングルプロセスで実行します")
+        try:
+            import pickle
 
+            # 分類器をpickle化
+            try:
+                classifier_state = pickle.dumps(self)
+            except Exception as e:
+                logger.warning(f"分類器のpickle化に失敗: {e}")
+                logger.info("シングルプロセスで実行します")
+                return self._predict_serial(df, feature_cols, target_cols, use_hierarchical, batch_size)
+
+            total_rows = len(df)
+            num_workers = min(cpu_count(), max(1, total_rows // batch_size))
+
+            if num_workers <= 1:
+                logger.info("ワーカー数が1のため、シングルプロセスで実行します")
+                return self._predict_serial(df, feature_cols, target_cols, use_hierarchical, batch_size)
+
+            logger.info(f"マルチプロセス並列予測開始（ワーカー数={num_workers}, バッチサイズ={batch_size}）")
+
+            # バッチデータを準備
+            batch_data_list = []
+            for i in range(0, total_rows, batch_size):
+                batch = df.iloc[i:i+batch_size].copy()
+                batch_data_list.append((batch, i))
+
+            # マルチプロセスで処理
+            results = [None] * len(batch_data_list)
+
+            with Pool(processes=num_workers, initializer=_init_worker,
+                     initargs=(classifier_state, feature_cols, target_cols, use_hierarchical)) as pool:
+                for start_idx, batch_result in pool.map(_process_batch, batch_data_list):
+                    batch_index = start_idx // batch_size
+                    results[batch_index] = batch_result
+
+            # Noneを除外
+            results = [r for r in results if r is not None]
+
+            logger.info(f"マルチプロセス並列予測完了: {len(results)}バッチ処理完了")
+
+            # メモリ解放
+            gc.collect()
+
+            return results
+
+        except Exception as e:
+            logger.error(f"マルチプロセス予測エラー: {e}")
+            logger.info("シングルプロセスで実行します")
+            return self._predict_serial(df, feature_cols, target_cols, use_hierarchical, batch_size)
+
+    def _predict_serial(
+        self,
+        df: pd.DataFrame,
+        feature_cols: List[str],
+        target_cols: List[str],
+        use_hierarchical: bool,
+        batch_size: int
+    ) -> List[pd.DataFrame]:
+        """シングルプロセスで予測を実行（フォールバック用）"""
         results = []
         total_rows = len(df)
 
@@ -746,10 +845,7 @@ class ProductClassifierWeb:
         target_col: str,
         max_samples: int = 100
     ) -> Optional[Dict[str, Any]]:
-        """SHAP値を計算（骨格実装）
-
-        注意: 完全な実装にはshapライブラリが必要です。
-        現在は骨格のみの実装です。
+        """SHAP値を計算（完全実装）
 
         Args:
             sample_df: サンプルデータフレーム
@@ -758,27 +854,98 @@ class ProductClassifierWeb:
             max_samples: 最大サンプル数
 
         Returns:
-            SHAP値の辞書（未実装の場合はNone）
+            SHAP値の辞書
         """
         try:
-            # TODO: shapライブラリのインストールと実装
-            logger.warning("SHAP値分析は骨格実装のため、現在は利用できません")
-            logger.info("完全な実装には 'pip install shap' が必要です")
+            # shapライブラリのインポート
+            try:
+                import shap
+            except ImportError:
+                logger.warning("shapライブラリがインストールされていません")
+                logger.info("SHAP値分析には 'pip install shap' が必要です")
+                # フォールバック：特徴量重要度を返す
+                importances = self.get_feature_importances()
+                if importances and target_col in importances:
+                    return {
+                        'type': 'feature_importance',
+                        'target_col': target_col,
+                        'importances': importances[target_col],
+                        'note': 'SHAP値の代わりに特徴量重要度を表示しています（shapライブラリ未インストール）'
+                    }
+                return None
 
-            # 骨格実装：特徴量重要度を代替として返す
+            if not self.is_trained or not self.classifier:
+                logger.warning("モデルが訓練されていません")
+                return None
+
+            # サンプル数を制限
+            if len(sample_df) > max_samples:
+                sample_df = sample_df.sample(n=max_samples, random_state=42)
+
+            # 数値特徴量を抽出
+            sample_df = self.extract_numeric_features(sample_df)
+
+            # 特徴量作成
+            X = self.prepare_features(sample_df, feature_cols)
+
+            # モデルの種類に応じてExplainerを選択
+            model = self.classifier.models.get(target_col)
+            if model is None:
+                logger.warning(f"モデルが見つかりません: {target_col}")
+                return None
+
+            # LightGBMの場合
+            if hasattr(model, 'predict_proba'):
+                explainer = shap.TreeExplainer(model)
+                shap_values = explainer.shap_values(X)
+
+                # 多クラスの場合、各クラスのSHAP値を平均
+                if isinstance(shap_values, list):
+                    shap_values = np.abs(shap_values).mean(axis=0)
+                else:
+                    shap_values = np.abs(shap_values)
+
+            # LinearSVCの場合
+            else:
+                # LinearモデルにはLinearExplainerを使用
+                explainer = shap.LinearExplainer(model, X)
+                shap_values = explainer.shap_values(X)
+
+                if shap_values.ndim > 2:
+                    shap_values = np.abs(shap_values).mean(axis=0)
+                else:
+                    shap_values = np.abs(shap_values)
+
+            # 特徴量ごとの平均SHAP値を計算
+            mean_shap_values = np.mean(shap_values, axis=0)
+
+            # 特徴量名とSHAP値をマッピング
+            shap_dict = {}
+            for i, shap_value in enumerate(mean_shap_values):
+                if i < len(self.feature_names):
+                    shap_dict[self.feature_names[i]] = float(shap_value)
+
+            # 上位20件をソート
+            sorted_shap = dict(sorted(shap_dict.items(), key=lambda x: x[1], reverse=True)[:20])
+
+            return {
+                'type': 'shap_values',
+                'target_col': target_col,
+                'shap_values': sorted_shap,
+                'note': 'SHAP値（予測への寄与度）上位20件'
+            }
+
+        except Exception as e:
+            logger.error(f"SHAP値計算エラー: {e}")
+            # エラー時は特徴量重要度を返す
             importances = self.get_feature_importances()
             if importances and target_col in importances:
                 return {
                     'type': 'feature_importance',
                     'target_col': target_col,
                     'importances': importances[target_col],
-                    'note': 'SHAP値の代わりに特徴量重要度を表示しています'
+                    'note': f'SHAP値計算エラーのため特徴量重要度を表示: {str(e)}'
                 }
-
-            return None
-
-        except Exception as e:
-            logger.error(f"SHAP値計算エラー: {e}")
             return None
 
 
@@ -849,6 +1016,13 @@ def process_product_classification():
         segment_column = request.form.get('segment_column', '')
         subsegment_column = request.form.get('subsegment_column', '')
 
+        # アルゴリズム選択を取得
+        algorithm_choice = request.form.get('algorithm', 'auto')
+        if algorithm_choice == 'auto':
+            algorithm = None  # 自動選択
+        else:
+            algorithm = algorithm_choice
+
         if not jan_column or not product_column:
             return jsonify({'error': True, 'message': '必須項目が不足しています'})
 
@@ -896,8 +1070,8 @@ def process_product_classification():
             market_df['jan'] = market_df['jan'].apply(normalize_jan)
             trial_df['JAN'] = trial_df['JAN'].apply(normalize_jan)
 
-            # 分類器初期化（アルゴリズム自動選択）
-            classifier = ProductClassifierWeb()
+            # 分類器初期化（アルゴリズム選択）
+            classifier = ProductClassifierWeb(algorithm=algorithm)
 
             # JAN辞書作成
             classifier.create_jan_dict(trial_df)

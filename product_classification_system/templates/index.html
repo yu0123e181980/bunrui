@@ -443,6 +443,10 @@
             display: block;
         }
 
+        .importance-tab-content canvas {
+            height: 600px !important;
+        }
+
         .filter-controls {
             margin-bottom: 1.5rem;
             padding: 1rem;
@@ -764,6 +768,27 @@
             </div>
         </div>
 
+        <!-- アルゴリズム選択セクション -->
+        <div class="algorithm-selection" id="algorithmSelection" style="display: none; margin-top: 2rem;">
+            <div style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 15px; padding: 1.5rem;">
+                <h3 style="color: #60a5fa; margin-bottom: 1rem; font-size: 1.1rem;">⚙️ アルゴリズム選択</h3>
+                <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                        <input type="radio" name="algorithm" value="auto" id="algorithmAuto" checked style="width: 18px; height: 18px;">
+                        <span style="color: #cbd5e1;">自動選択（推奨）<br><small style="color: #94a3b8;">500件未満: LinearSVC / 500件以上: LightGBM</small></span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                        <input type="radio" name="algorithm" value="linear_svc" id="algorithmLinearSVC" style="width: 18px; height: 18px;">
+                        <span style="color: #cbd5e1;">LinearSVC<br><small style="color: #94a3b8;">テキストデータに強い・高速</small></span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                        <input type="radio" name="algorithm" value="lightgbm" id="algorithmLightGBM" style="width: 18px; height: 18px;">
+                        <span style="color: #cbd5e1;">LightGBM<br><small style="color: #94a3b8;">大量データに強い・高精度</small></span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
         <button id="processButton" class="process-button">
             分類実行
         </button>
@@ -1008,11 +1033,13 @@
         function checkReadyToProcess() {
             const marketJan = document.getElementById('marketJanCol').value;
             const marketProduct = document.getElementById('marketProductCol').value;
-            
+
             if (marketData && trialData && marketJan && marketProduct) {
                 elements.processButton.classList.add('visible');
+                document.getElementById('algorithmSelection').style.display = 'block';
             } else {
                 elements.processButton.classList.remove('visible');
+                document.getElementById('algorithmSelection').style.display = 'none';
             }
         }
 
@@ -1052,6 +1079,10 @@
             formData.append('subcategory_column', document.getElementById('marketSubcategoryCol').value);
             formData.append('segment_column', document.getElementById('marketSegmentCol').value);
             formData.append('subsegment_column', document.getElementById('marketSubsegmentCol').value);
+
+            // アルゴリズム選択を追加
+            const selectedAlgorithm = document.querySelector('input[name="algorithm"]:checked').value;
+            formData.append('algorithm', selectedAlgorithm);
 
             elements.processButton.disabled = true;
             elements.progressSection.classList.add('visible');
