@@ -1427,14 +1427,25 @@
                 'container': '容器',
                 'avg_price': '平均価格',
                 'jan_maker_code': 'JANメーカーコード',
-                'price_numeric': '平均価格',
-                'volume_numeric': '容量数値',
-                'count_numeric': '個数数値',
                 'existing_category': '大分類',
                 'existing_subcategory': '中分類',
                 'existing_segment': '小分類',
                 'existing_subsegment': '細分類'
             };
+
+            // 表示順序を定義（この順番で表示する）
+            const columnOrder = [
+                'product_name',
+                'standard',
+                'manufacturer',
+                'container',
+                'avg_price',
+                'jan_maker_code',
+                'existing_category',
+                'existing_subcategory',
+                'existing_segment',
+                'existing_subsegment'
+            ];
 
             Object.keys(targetMap).forEach(targetCol => {
                 if (!columnImportances[targetCol]) {
@@ -1442,8 +1453,17 @@
                 }
 
                 const importanceData = columnImportances[targetCol];
-                const columns = Object.keys(importanceData).map(col => columnNameMap[col] || col);
-                const importances = Object.values(importanceData).map(v => (v * 100).toFixed(2)); // パーセント表示
+
+                // 指定された順序で、存在するカラムのみを抽出
+                const columns = [];
+                const importances = [];
+
+                columnOrder.forEach(col => {
+                    if (importanceData.hasOwnProperty(col)) {
+                        columns.push(columnNameMap[col]);
+                        importances.push((importanceData[col] * 100).toFixed(2));
+                    }
+                });
 
                 const canvasId = `importanceChart${targetMap[targetCol].id}`;
                 const canvas = document.getElementById(canvasId);
