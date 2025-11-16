@@ -86,6 +86,11 @@ RESULTS_FOLDER = os.path.join(SCRIPT_DIR, 'temp_results')
 ALGORITHM_THRESHOLD = 500  # アルゴリズム自動選択の閾値（データ件数）
 PARALLEL_BATCH_SIZE = 100  # 並列処理のバッチサイズ
 
+# デバッグ情報
+logger.info(f"SCRIPT_DIR: {SCRIPT_DIR}")
+logger.info(f"UPLOAD_FOLDER: {UPLOAD_FOLDER}")
+logger.info(f"RESULTS_FOLDER: {RESULTS_FOLDER}")
+
 # フォルダ作成
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(RESULTS_FOLDER, exist_ok=True)
@@ -1284,10 +1289,14 @@ def process_product_classification():
             output_df = output_df.rename(columns=column_rename)
 
             # CSV保存前にディレクトリの存在を確認
+            logger.info(f"RESULTS_FOLDER: {RESULTS_FOLDER}")
+            logger.info(f"result_path: {result_path}")
             os.makedirs(RESULTS_FOLDER, exist_ok=True)
+            logger.info(f"ディレクトリ作成完了: {RESULTS_FOLDER} (exists={os.path.exists(RESULTS_FOLDER)})")
 
             # CSV保存（UTF-8 BOM付き：Excelで文字化けしないように）
             output_df.to_csv(result_path, index=False, encoding='utf-8-sig')
+            logger.info(f"CSV保存完了: {result_path}")
 
             # 統計情報
             jan_matched_count = len([r for r in all_results if r['status'] == 'jan_matched'])
