@@ -320,9 +320,7 @@ class ProductClassifierWeb:
                     vectorizer = TfidfVectorizer(
                         analyzer='char',
                         ngram_range=(2, 4),
-                        max_features=200,  # カラムごとに200特徴量
-                        min_df=1,
-                        max_df=0.9
+                        max_features=200  # カラムごとに200特徴量
                     )
                     col_matrix = vectorizer.fit_transform(col_texts).toarray()
                     setattr(self, vec_key, vectorizer)
