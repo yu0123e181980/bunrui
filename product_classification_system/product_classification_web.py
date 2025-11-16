@@ -361,6 +361,14 @@ class ProductClassifierWeb:
         try:
             trial_df.columns = trial_df.columns.str.strip()
 
+            # 必須カラムの存在確認
+            required_cols = ['JAN', 'カテゴリー名', 'サブカテゴリー名', 'セグメント名', 'サブセグメント名']
+            missing_cols = [col for col in required_cols if col not in trial_df.columns]
+            if missing_cols:
+                logger.error(f"JAN辞書作成失敗: 必須カラム不足: {missing_cols}")
+                logger.error(f"利用可能なカラム: {list(trial_df.columns)}")
+                raise ValueError(f"トライアルマスターに必須カラムが不足しています: {', '.join(missing_cols)}")
+
             self.jan_dict = {}
             for _, row in trial_df.iterrows():
                 jan = normalize_jan(row['JAN'])
@@ -374,6 +382,10 @@ class ProductClassifierWeb:
                     }
             logger.info(f"JAN辞書作成完了: {len(self.jan_dict)}件")
 
+        except KeyError as e:
+            logger.error(f"JAN辞書作成エラー（カラムアクセス失敗）: {e}")
+            logger.error(f"利用可能なカラム: {list(trial_df.columns)}")
+            raise ValueError(f"必要なカラムが見つかりません: {e}")
         except Exception as e:
             logger.error(f"JAN辞書作成エラー: {e}")
             raise
@@ -1045,12 +1057,21 @@ def process_product_classification():
             market_df = load_file(market_path)
             trial_df = load_file(trial_path)
 
+            # カラム名の正規化（前後の空白除去）
+            trial_df.columns = trial_df.columns.str.strip()
+            market_df.columns = market_df.columns.str.strip()
+
             # トライアルマスターの必須カラムチェック
             required_trial_cols = ['JAN', '商品名', '規格', 'メーカー名',
                                  'カテゴリー名', 'サブカテゴリー名', 'セグメント名', 'サブセグメント名']
             missing_cols = [col for col in required_trial_cols if col not in trial_df.columns]
             if missing_cols:
-                return jsonify({'error': True, 'message': f'トライアルマスターに必須カラムが不足: {", ".join(missing_cols)}'})
+                logger.error(f"トライアルマスター必須カラム不足: {missing_cols}")
+                logger.error(f"利用可能なカラム: {list(trial_df.columns)}")
+                return jsonify({
+                    'error': True,
+                    'message': f'トライアルマスターに必須カラムが不足しています: {", ".join(missing_cols)}\n\n利用可能なカラム: {", ".join(list(trial_df.columns))}'
+                })
 
             # 市場データのカラムマッピング
             market_df = market_df.rename(columns={jan_column: 'jan', product_column: 'product_name'})
