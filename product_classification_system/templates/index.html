@@ -1425,7 +1425,11 @@
                 'standard': '規格',
                 'manufacturer': 'メーカー',
                 'container': '容器',
+                'avg_price': '平均価格',
+                'jan_maker_code': 'JANメーカーコード',
                 'price_numeric': '平均価格',
+                'volume_numeric': '容量数値',
+                'count_numeric': '個数数値',
                 'existing_category': '大分類',
                 'existing_subcategory': '中分類',
                 'existing_segment': '小分類',
@@ -1516,6 +1520,9 @@
                     }
                 });
             });
+
+            // タブ切り替え機能
+            setupImportanceTabs();
         }
 
         // 結果表示
