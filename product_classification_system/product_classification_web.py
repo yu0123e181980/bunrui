@@ -79,20 +79,10 @@ warnings.filterwarnings('ignore')
 logger = logging.getLogger(__name__)
 
 # 設定
-# スクリプトの場所を基準にした絶対パスを使用
-SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
-UPLOAD_FOLDER = os.path.join(SCRIPT_DIR, 'temp_uploads')
-RESULTS_FOLDER = os.path.join(SCRIPT_DIR, 'temp_results')
+UPLOAD_FOLDER = 'temp_uploads'
+RESULTS_FOLDER = 'temp_results'
 ALGORITHM_THRESHOLD = 500  # アルゴリズム自動選択の閾値（データ件数）
 PARALLEL_BATCH_SIZE = 100  # 並列処理のバッチサイズ
-
-# デバッグ情報
-logger.info(f"__file__: {__file__}")
-logger.info(f"os.path.abspath(__file__): {os.path.abspath(__file__)}")
-logger.info(f"os.path.realpath(__file__): {os.path.realpath(__file__)}")
-logger.info(f"SCRIPT_DIR: {SCRIPT_DIR}")
-logger.info(f"UPLOAD_FOLDER: {UPLOAD_FOLDER}")
-logger.info(f"RESULTS_FOLDER: {RESULTS_FOLDER}")
 
 # フォルダ作成
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -988,7 +978,6 @@ def get_file_columns():
         # 一時ファイルに保存
         temp_id = str(uuid.uuid4())
         temp_path = os.path.join(UPLOAD_FOLDER, f"{temp_id}_{file.filename}")
-        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
         file.save(temp_path)
 
         try:
@@ -1054,7 +1043,6 @@ def process_product_classification():
         market_path = os.path.join(UPLOAD_FOLDER, f"{process_id}_market_{market_file.filename}")
         trial_path = os.path.join(UPLOAD_FOLDER, f"{process_id}_trial_{trial_file.filename}")
 
-        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
         market_file.save(market_path)
         trial_file.save(trial_path)
 
@@ -1291,15 +1279,8 @@ def process_product_classification():
 
             output_df = output_df.rename(columns=column_rename)
 
-            # CSV保存前にディレクトリの存在を確認
-            logger.info(f"RESULTS_FOLDER: {RESULTS_FOLDER}")
-            logger.info(f"result_path: {result_path}")
-            os.makedirs(RESULTS_FOLDER, exist_ok=True)
-            logger.info(f"ディレクトリ作成完了: {RESULTS_FOLDER} (exists={os.path.exists(RESULTS_FOLDER)})")
-
             # CSV保存（UTF-8 BOM付き：Excelで文字化けしないように）
             output_df.to_csv(result_path, index=False, encoding='utf-8-sig')
-            logger.info(f"CSV保存完了: {result_path}")
 
             # 統計情報
             jan_matched_count = len([r for r in all_results if r['status'] == 'jan_matched'])
@@ -1380,8 +1361,6 @@ def load_file(file_path: str) -> pd.DataFrame:
 def download_classification_results(download_id: str):
     """分類結果をダウンロード"""
     try:
-        # ディレクトリが存在しない場合は作成
-        os.makedirs(RESULTS_FOLDER, exist_ok=True)
         result_files = [f for f in os.listdir(RESULTS_FOLDER) if f.startswith(download_id)]
 
         if not result_files:
@@ -1411,8 +1390,6 @@ def download_classification_results(download_id: str):
 def cleanup_classification_results(download_id: str):
     """一時ファイルクリーンアップ"""
     try:
-        # ディレクトリが存在しない場合は作成
-        os.makedirs(RESULTS_FOLDER, exist_ok=True)
         result_files = [f for f in os.listdir(RESULTS_FOLDER) if f.startswith(download_id)]
 
         deleted_count = 0
