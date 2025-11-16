@@ -26,11 +26,14 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB制限
 app.template_folder = 'templates'
 app.static_folder = 'static'
 
+# スクリプトの場所を基準にした絶対パスを使用
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # 必要なフォルダ作成
-os.makedirs('templates', exist_ok=True)
-os.makedirs('static', exist_ok=True)
-os.makedirs('temp_uploads', exist_ok=True)
-os.makedirs('temp_results', exist_ok=True)
+os.makedirs(os.path.join(SCRIPT_DIR, 'templates'), exist_ok=True)
+os.makedirs(os.path.join(SCRIPT_DIR, 'static'), exist_ok=True)
+os.makedirs(os.path.join(SCRIPT_DIR, 'temp_uploads'), exist_ok=True)
+os.makedirs(os.path.join(SCRIPT_DIR, 'temp_results'), exist_ok=True)
 
 # メインページ
 @app.route('/')

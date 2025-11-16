@@ -79,8 +79,10 @@ warnings.filterwarnings('ignore')
 logger = logging.getLogger(__name__)
 
 # 設定
-UPLOAD_FOLDER = 'temp_uploads'
-RESULTS_FOLDER = 'temp_results'
+# スクリプトの場所を基準にした絶対パスを使用
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_FOLDER = os.path.join(SCRIPT_DIR, 'temp_uploads')
+RESULTS_FOLDER = os.path.join(SCRIPT_DIR, 'temp_results')
 ALGORITHM_THRESHOLD = 500  # アルゴリズム自動選択の閾値（データ件数）
 PARALLEL_BATCH_SIZE = 100  # 並列処理のバッチサイズ
 
