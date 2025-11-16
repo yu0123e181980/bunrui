@@ -459,6 +459,9 @@ class ProductClassifierWeb:
 
             self.use_hierarchical = use_hierarchical
 
+            # 特徴量カラムを保存（カラム別重要度計算で使用）
+            self.feature_cols = feature_cols
+
             # 数値特徴量を抽出
             train_df = self.extract_numeric_features(train_df)
 
@@ -899,17 +902,24 @@ class ProductClassifierWeb:
 
                     feature_name = self.feature_names[i]
 
-                    # 特徴量名からカラム名を抽出（"カラム名_特徴" の形式）
-                    if '_' in feature_name:
-                        col_name = feature_name.split('_')[0]
-                        if col_name not in column_importance:
-                            column_importance[col_name] = 0.0
-                        column_importance[col_name] += float(importance)
-                    else:
-                        # 数値特徴量など（カラム名そのもの）
-                        if feature_name not in column_importance:
-                            column_importance[feature_name] = 0.0
-                        column_importance[feature_name] += float(importance)
+                    # 特徴量名からカラム名を抽出
+                    # feature_colsリストを使って完全なカラム名を見つける
+                    col_name = None
+
+                    # まず、feature_colsから始まるかチェック（avg_price_XX のような形式）
+                    if hasattr(self, 'feature_cols') and self.feature_cols:
+                        for col in self.feature_cols:
+                            if feature_name.startswith(col + '_') or feature_name == col:
+                                col_name = col
+                                break
+
+                    # 見つからない場合は数値特徴量かもしれない
+                    if col_name is None:
+                        col_name = feature_name
+
+                    if col_name not in column_importance:
+                        column_importance[col_name] = 0.0
+                    column_importance[col_name] += float(importance)
 
                 # 重要度の合計で正規化
                 total = sum(column_importance.values())
