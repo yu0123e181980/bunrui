@@ -968,6 +968,7 @@ def get_file_columns():
         # 一時ファイルに保存
         temp_id = str(uuid.uuid4())
         temp_path = os.path.join(UPLOAD_FOLDER, f"{temp_id}_{file.filename}")
+        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
         file.save(temp_path)
 
         try:
@@ -1033,6 +1034,7 @@ def process_product_classification():
         market_path = os.path.join(UPLOAD_FOLDER, f"{process_id}_market_{market_file.filename}")
         trial_path = os.path.join(UPLOAD_FOLDER, f"{process_id}_trial_{trial_file.filename}")
 
+        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
         market_file.save(market_path)
         trial_file.save(trial_path)
 
@@ -1260,6 +1262,9 @@ def process_product_classification():
 
             output_df = output_df.rename(columns=column_rename)
 
+            # CSV保存前にディレクトリの存在を確認
+            os.makedirs(RESULTS_FOLDER, exist_ok=True)
+
             # CSV保存（UTF-8 BOM付き：Excelで文字化けしないように）
             output_df.to_csv(result_path, index=False, encoding='utf-8-sig')
 
@@ -1342,6 +1347,8 @@ def load_file(file_path: str) -> pd.DataFrame:
 def download_classification_results(download_id: str):
     """分類結果をダウンロード"""
     try:
+        # ディレクトリが存在しない場合は作成
+        os.makedirs(RESULTS_FOLDER, exist_ok=True)
         result_files = [f for f in os.listdir(RESULTS_FOLDER) if f.startswith(download_id)]
 
         if not result_files:
@@ -1371,6 +1378,8 @@ def download_classification_results(download_id: str):
 def cleanup_classification_results(download_id: str):
     """一時ファイルクリーンアップ"""
     try:
+        # ディレクトリが存在しない場合は作成
+        os.makedirs(RESULTS_FOLDER, exist_ok=True)
         result_files = [f for f in os.listdir(RESULTS_FOLDER) if f.startswith(download_id)]
 
         deleted_count = 0
