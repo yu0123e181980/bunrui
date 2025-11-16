@@ -397,6 +397,52 @@
             border-left: 4px solid #10b981;
         }
 
+        /* 特徴量重要度タブ */
+        .importance-tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            border-bottom: 2px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .importance-tab {
+            padding: 0.8rem 1.5rem;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-bottom: none;
+            border-radius: 10px 10px 0 0;
+            color: #94a3b8;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.95rem;
+        }
+
+        .importance-tab:hover {
+            background: rgba(59, 130, 246, 0.1);
+            color: #60a5fa;
+        }
+
+        .importance-tab.active {
+            background: rgba(59, 130, 246, 0.2);
+            border-color: #60a5fa;
+            color: #60a5fa;
+            font-weight: bold;
+        }
+
+        .importance-content {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 0 10px 10px 10px;
+            padding: 1.5rem;
+        }
+
+        .importance-tab-content {
+            display: none;
+        }
+
+        .importance-tab-content.active {
+            display: block;
+        }
+
         .filter-controls {
             margin-bottom: 1.5rem;
             padding: 1rem;
@@ -744,6 +790,34 @@
             <div class="accuracy-summary" id="accuracySummary"></div>
         </div>
 
+        <!-- 特徴量重要度表示セクション -->
+        <div class="accuracy-section" id="featureImportanceSection" style="display: none;">
+            <h2 class="accuracy-title">🔍 特徴量重要度分析</h2>
+
+            <!-- 4階層別タブ -->
+            <div class="importance-tabs">
+                <button class="importance-tab active" data-target="category">カテゴリー</button>
+                <button class="importance-tab" data-target="subcategory">サブカテゴリー</button>
+                <button class="importance-tab" data-target="segment">セグメント</button>
+                <button class="importance-tab" data-target="subsegment">サブセグメント</button>
+            </div>
+
+            <div class="importance-content">
+                <div class="importance-tab-content active" id="importance-category">
+                    <canvas id="importanceChartCategory"></canvas>
+                </div>
+                <div class="importance-tab-content" id="importance-subcategory">
+                    <canvas id="importanceChartSubcategory"></canvas>
+                </div>
+                <div class="importance-tab-content" id="importance-segment">
+                    <canvas id="importanceChartSegment"></canvas>
+                </div>
+                <div class="importance-tab-content" id="importance-subsegment">
+                    <canvas id="importanceChartSubsegment"></canvas>
+                </div>
+            </div>
+        </div>
+
         <div class="results-section" id="resultsSection">
             <div class="result-header">
                 <h2 class="result-title">分類結果</h2>
@@ -1023,7 +1097,13 @@
                         displayAccuracyResults(data.validation_results);
                         elements.accuracySection.classList.add('visible');
                     }
-                    
+
+                    // 特徴量重要度があれば表示
+                    if (data.feature_importances) {
+                        displayFeatureImportances(data.feature_importances);
+                        document.getElementById('featureImportanceSection').style.display = 'block';
+                    }
+
                     elements.resultsSection.classList.add('visible');
                     elements.progressSection.classList.remove('visible');
                 }, 1000);
@@ -1185,6 +1265,112 @@
                 <p style="color: #cbd5e1; margin-bottom: 0.3rem;"><strong>検証データ総数:</strong> ${sampleCounts[0].train + sampleCounts[0].test}件</p>
                 <p style="color: #cbd5e1;">学習データ量が多いほど予測精度が向上する傾向が確認できます。</p>
             `;
+        }
+
+        // 特徴量重要度を表示
+        let importanceCharts = {};
+
+        function displayFeatureImportances(featureImportances) {
+            if (!featureImportances) {
+                return;
+            }
+
+            const targetMap = {
+                'predicted_category': { id: 'Category', label: 'カテゴリー' },
+                'predicted_subcategory': { id: 'Subcategory', label: 'サブカテゴリー' },
+                'predicted_segment': { id: 'Segment', label: 'セグメント' },
+                'predicted_subsegment': { id: 'Subsegment', label: 'サブセグメント' }
+            };
+
+            Object.keys(targetMap).forEach(targetCol => {
+                if (!featureImportances[targetCol]) {
+                    return;
+                }
+
+                const importanceData = featureImportances[targetCol];
+                const features = Object.keys(importanceData);
+                const importances = Object.values(importanceData);
+
+                const canvasId = `importanceChart${targetMap[targetCol].id}`;
+                const ctx = document.getElementById(canvasId).getContext('2d');
+
+                // 既存のチャートがあれば破棄
+                if (importanceCharts[canvasId]) {
+                    importanceCharts[canvasId].destroy();
+                }
+
+                // 横棒グラフを作成
+                importanceCharts[canvasId] = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: features,
+                        datasets: [{
+                            label: '重要度',
+                            data: importances,
+                            backgroundColor: 'rgba(59, 130, 246, 0.6)',
+                            borderColor: 'rgba(59, 130, 246, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',  // 横棒グラフ
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: `${targetMap[targetCol].label}の特徴量重要度 (上位20件)`,
+                                color: '#60a5fa',
+                                font: { size: 16 }
+                            },
+                            legend: {
+                                display: false
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: '重要度',
+                                    color: '#94a3b8'
+                                },
+                                ticks: { color: '#94a3b8' },
+                                grid: { color: 'rgba(59, 130, 246, 0.2)' }
+                            },
+                            y: {
+                                ticks: {
+                                    color: '#94a3b8',
+                                    font: { size: 11 }
+                                },
+                                grid: { color: 'rgba(59, 130, 246, 0.1)' }
+                            }
+                        }
+                    }
+                });
+            });
+
+            // タブ切り替え機能
+            setupImportanceTabs();
+        }
+
+        function setupImportanceTabs() {
+            const tabs = document.querySelectorAll('.importance-tab');
+            const contents = document.querySelectorAll('.importance-tab-content');
+
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    // すべてのタブとコンテンツから active クラスを削除
+                    tabs.forEach(t => t.classList.remove('active'));
+                    contents.forEach(c => c.classList.remove('active'));
+
+                    // クリックされたタブにアクティブを設定
+                    tab.classList.add('active');
+
+                    // 対応するコンテンツを表示
+                    const target = tab.getAttribute('data-target');
+                    document.getElementById(`importance-${target}`).classList.add('active');
+                });
+            });
         }
 
         // 結果表示

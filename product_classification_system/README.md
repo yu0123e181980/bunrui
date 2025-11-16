@@ -1,15 +1,23 @@
-# 商品自動分類システム
+# 商品自動分類システム V2
 
-階層型機械学習による商品分類＋精度検証機能を搭載した単一機能ツールです。
+階層型機械学習による商品分類＋精度検証機能＋特徴量重要度分析を搭載した高度な分類ツールです。
 
 ## 機能概要
 
+### 基本機能
 - **JAN一致処理**: TRIALマスタとのJANコード完全一致による自動分類
 - **階層型ML予測**: カテゴリー→サブカテゴリー→セグメント→サブセグメントの順に予測
 - **精度検証**: 複数の学習データ比率で精度を検証し、グラフ表示
 - **信頼度判定**: 予測信頼度による3段階分類（高/中/低）
 - **フィルター機能**: ステータス・信頼度・検索による結果絞り込み
-- **Excel出力**: 分類結果をExcelファイルでダウンロード
+- **CSV出力**: 分類結果をCSVファイルでダウンロード（UTF-8 BOM付き）
+
+### 新機能（V2）
+- **アルゴリズム自動選択**: データ量に応じてLinearSVC/LightGBMを自動選択（500件基準）
+- **特徴量重要度可視化**: 4階層別タブで重要な特徴量を横棒グラフ表示（上位20件）
+- **SHAP値分析（骨格）**: 個別商品の予測根拠を分析する基盤（将来の拡張用）
+- **マルチプロセス対応**: 大量データの高速処理（骨格実装済み）
+- **メモリ効率化**: gc.collect()による自動メモリ管理で大量データにも対応
 
 ## 必要な環境
 
@@ -19,21 +27,31 @@
 
 ### 必要なPythonライブラリ
 ```bash
-pip install flask pandas numpy scikit-learn openpyxl chardet --break-system-packages
+pip install -r requirements.txt
+```
+
+または個別にインストール：
+```bash
+pip install flask pandas numpy scikit-learn lightgbm openpyxl chardet
 ```
 
 ## ファイル構成
 
 ```
-商品自動分類システム/
+product_classification_system/
 ├── app.py                           # Flaskアプリケーション（メイン）
-├── product_classification_web.py    # 商品分類エンジン
+├── product_classification_web.py    # 商品分類エンジン（V2）
+├── base_classifier.py               # 基底クラス（抽象クラス）
+├── classifiers/                     # 分類器モジュール
+│   ├── __init__.py
+│   ├── linear_svc_classifier.py     # LinearSVC分類器
+│   └── lightgbm_classifier.py       # LightGBM分類器
 ├── templates/
-│   └── index.html                   # UIページ
+│   └── index.html                   # UIページ（特徴量重要度表示対応）
+├── requirements.txt                 # 依存パッケージ一覧
 ├── temp_uploads/                    # 一時アップロードフォルダ（自動作成）
 ├── temp_results/                    # 処理結果保存フォルダ（自動作成）
 └── README.md                        # このファイル
-
 ```
 
 ## セットアップ手順
@@ -57,8 +75,10 @@ mv index.html templates/
 
 ### 3. 必要なライブラリのインストール
 ```bash
-pip install flask pandas numpy scikit-learn openpyxl chardet --break-system-packages
+pip install -r requirements.txt
 ```
+
+**LightGBMについて**: 500件以上のデータセットで自動的に使用されます。インストールできない環境ではLinearSVCにフォールバックします。
 
 ## 起動方法
 
@@ -132,6 +152,11 @@ http://localhost:5000
 - 学習データ比率別の精度推移
 - 4階層（カテゴリー/サブカテゴリー/セグメント/サブセグメント）の精度比較
 
+#### 特徴量重要度分析（NEW）
+- 4階層別タブで表示
+- 各階層で重要な特徴量を横棒グラフで可視化（上位20件）
+- どの商品情報が予測に影響しているかを理解できる
+
 #### 結果テーブル
 - JAN、商品名、予測結果、信頼度、ステータス、手法の表示
 - フィルター・検索機能
@@ -140,7 +165,8 @@ http://localhost:5000
 ### Step 5: 結果ダウンロード
 
 1. 「結果をダウンロード」ボタンをクリック
-2. Excelファイル（.xlsx）がダウンロード開始
+2. CSVファイル（UTF-8 BOM付き）がダウンロード開始
+3. ExcelでもGoogle Sheetsでも文字化けなく開けます
 
 ## 入力ファイル仕様
 
@@ -165,7 +191,7 @@ http://localhost:5000
 
 ## 出力ファイル仕様
 
-### Excelファイル内容
+### CSVファイル内容（UTF-8 BOM付き）
 | カラム名 | 説明 |
 |---------|------|
 | JAN | JANコード |
@@ -216,8 +242,13 @@ app.run(debug=True, host='0.0.0.0', port=5001)  # ポート番号を変更
 ### ライブラリインポートエラー
 必要なライブラリが不足している場合:
 ```bash
-pip install flask pandas numpy scikit-learn openpyxl chardet --break-system-packages
+pip install -r requirements.txt
 ```
+
+LightGBMのインストールエラーが発生する場合:
+- システムにコンパイラがインストールされているか確認
+- 事前ビルド済みホイールが利用可能かPyPIで確認
+- インストールできない場合でもLinearSVCで動作します
 
 ### ファイルアップロードエラー
 - ファイルサイズが50MBを超えていないか確認
@@ -230,13 +261,16 @@ pip install flask pandas numpy scikit-learn openpyxl chardet --break-system-pack
 
 ## 技術仕様
 
-### 機械学習アルゴリズム
-- **モデル**: LinearSVC（線形サポートベクターマシン）
-- **特徴量**: TF-IDF（商品名＋規格＋メーカー）+ 数値特徴量（容量・価格）
+### 機械学習アルゴリズム（V2）
+- **アルゴリズム自動選択**:
+  - データ件数 < 500件: LinearSVC（線形サポートベクターマシン）
+  - データ件数 ≥ 500件: LightGBM（勾配ブースティング決定木）
+- **特徴量**: TF-IDF文字n-gram（商品名＋規格＋メーカー）+ 数値特徴量（容量・価格・入数）
 - **階層型学習**: 上位階層の予測結果を次の階層の学習に利用
+- **特徴量重要度**: LinearSVCは係数の絶対値、LightGBMは情報利得ベースで計算
 
 ### 精度検証方法
-- 学習データ比率: 50%, 60%, 70%, 80%, 90%
+- 学習データ比率: 10%, 20%, 30%, 40%, 50%, 60%, 70%, 80%, 90%
 - 評価指標: Accuracy（正解率）
 - 検証対象: サブセグメント単位での精度評価
 
@@ -251,6 +285,16 @@ pip install flask pandas numpy scikit-learn openpyxl chardet --break-system-pack
 予測結果は参考情報として利用し、重要な判断には人手による確認を推奨します。
 
 ## 更新履歴
+
+### v2.0.0 (2025-11-16)
+- **NEW**: アルゴリズム自動選択機能（LinearSVC/LightGBM、500件基準）
+- **NEW**: 特徴量重要度可視化（4階層別タブ、横棒グラフ）
+- **NEW**: SHAP値分析の骨格実装（将来の拡張用）
+- **NEW**: マルチプロセス並列処理の骨格実装
+- **NEW**: メモリ効率化（gc.collect()による自動メモリ管理）
+- **CHANGED**: Excel出力からCSV出力に変更（UTF-8 BOM付き）
+- **IMPROVED**: BaseClassifier抽象クラス設計による拡張性向上
+- **IMPROVED**: 型ヒント（Type Hints）対応でコード品質向上
 
 ### v1.0.0 (2025-11-16)
 - 初回リリース
