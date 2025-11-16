@@ -1249,8 +1249,9 @@ def process_product_classification():
             results_df = pd.DataFrame(all_results)
 
             # 結果保存（CSV形式）
-            result_filename = f"商品分類結果_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-            result_path = os.path.join(RESULTS_FOLDER, f"{process_id}_{result_filename}")
+            # ファイル名を短縮（Windowsパス長制限対策：UUIDのみでシンプルに）
+            result_filename = f"{process_id}.csv"
+            result_path = os.path.join(RESULTS_FOLDER, result_filename)
 
             # CSV出力用にカラム順序を整理
             output_columns = [
@@ -1375,13 +1376,15 @@ def download_classification_results(download_id: str):
         if not os.path.exists(result_path):
             return jsonify({'error': True, 'message': 'ダウンロードファイルが見つかりません'})
 
-        clean_filename = result_file.replace(f"{download_id}_", "")
+        # ダウンロード用のわかりやすいファイル名（タイムスタンプ付き）
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        download_filename = f"product_classification_{timestamp}.csv"
 
         # CSV形式でダウンロード
         return send_file(
             result_path,
             as_attachment=True,
-            download_name=clean_filename,
+            download_name=download_filename,
             mimetype='text/csv'
         )
 
