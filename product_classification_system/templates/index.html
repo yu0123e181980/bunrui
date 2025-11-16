@@ -444,7 +444,8 @@
         }
 
         .importance-tab-content canvas {
-            height: 600px !important;
+            height: 400px !important;
+            max-height: 500px !important;
         }
 
         .filter-controls {
@@ -817,7 +818,7 @@
 
         <!-- 特徴量重要度表示セクション -->
         <div class="accuracy-section" id="featureImportanceSection" style="display: none;">
-            <h2 class="accuracy-title">🔍 特徴量重要度分析</h2>
+            <h2 class="accuracy-title">📊 カラム別予測貢献度分析</h2>
 
             <!-- 4階層別タブ -->
             <div class="importance-tabs">
@@ -828,30 +829,18 @@
             </div>
 
             <div class="importance-content">
-                <!-- カラム単位の貢献度（NEW） -->
+                <!-- カラム単位の貢献度のみ表示 -->
                 <div class="importance-tab-content active" id="importance-category">
-                    <h3 style="color: #10b981; margin-bottom: 10px;">📊 カラム単位の予測貢献度</h3>
                     <canvas id="importanceChartCategoryCol"></canvas>
-                    <h3 style="color: #60a5fa; margin-top: 30px; margin-bottom: 10px;">🔬 詳細特徴量（上位20件）</h3>
-                    <canvas id="importanceChartCategory"></canvas>
                 </div>
                 <div class="importance-tab-content" id="importance-subcategory">
-                    <h3 style="color: #10b981; margin-bottom: 10px;">📊 カラム単位の予測貢献度</h3>
                     <canvas id="importanceChartSubcategoryCol"></canvas>
-                    <h3 style="color: #60a5fa; margin-top: 30px; margin-bottom: 10px;">🔬 詳細特徴量（上位20件）</h3>
-                    <canvas id="importanceChartSubcategory"></canvas>
                 </div>
                 <div class="importance-tab-content" id="importance-segment">
-                    <h3 style="color: #10b981; margin-bottom: 10px;">📊 カラム単位の予測貢献度</h3>
                     <canvas id="importanceChartSegmentCol"></canvas>
-                    <h3 style="color: #60a5fa; margin-top: 30px; margin-bottom: 10px;">🔬 詳細特徴量（上位20件）</h3>
-                    <canvas id="importanceChartSegment"></canvas>
                 </div>
                 <div class="importance-tab-content" id="importance-subsegment">
-                    <h3 style="color: #10b981; margin-bottom: 10px;">📊 カラム単位の予測貢献度</h3>
                     <canvas id="importanceChartSubsegmentCol"></canvas>
-                    <h3 style="color: #60a5fa; margin-top: 30px; margin-bottom: 10px;">🔬 詳細特徴量（上位20件）</h3>
-                    <canvas id="importanceChartSubsegment"></canvas>
                 </div>
             </div>
         </div>
@@ -1142,15 +1131,10 @@
                         elements.accuracySection.classList.add('visible');
                     }
 
-                    // 特徴量重要度があれば表示
-                    if (data.feature_importances) {
-                        displayFeatureImportances(data.feature_importances);
-                        document.getElementById('featureImportanceSection').style.display = 'block';
-                    }
-
-                    // カラム単位の重要度があれば表示（NEW）
+                    // カラム単位の重要度があれば表示
                     if (data.column_importances) {
                         displayColumnImportances(data.column_importances);
+                        document.getElementById('featureImportanceSection').style.display = 'block';
                     }
 
                     elements.resultsSection.classList.add('visible');
@@ -1494,10 +1478,17 @@
                                 display: true,
                                 text: `${targetMap[targetCol].label}予測へのカラム貢献度`,
                                 color: '#10b981',
-                                font: { size: 16 }
+                                font: { size: 18, weight: 'bold' }
                             },
                             legend: {
                                 display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return `貢献度: ${context.parsed.x}%`;
+                                    }
+                                }
                             }
                         },
                         scales: {
@@ -1505,15 +1496,19 @@
                                 title: {
                                     display: true,
                                     text: '貢献度 (%)',
-                                    color: '#94a3b8'
+                                    color: '#94a3b8',
+                                    font: { size: 14 }
                                 },
-                                ticks: { color: '#94a3b8' },
+                                ticks: {
+                                    color: '#94a3b8',
+                                    font: { size: 13 }
+                                },
                                 grid: { color: 'rgba(16, 185, 129, 0.2)' }
                             },
                             y: {
                                 ticks: {
-                                    color: '#94a3b8',
-                                    font: { size: 12 }
+                                    color: '#e2e8f0',
+                                    font: { size: 14, weight: 'bold' }
                                 },
                                 grid: { color: 'rgba(16, 185, 129, 0.1)' }
                             }
