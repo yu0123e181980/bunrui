@@ -299,33 +299,42 @@ class ProductClassifierWeb:
             return valid_choices[0] if valid_choices else prediction, 0.3
 
     def prepare_features(self, df: pd.DataFrame, feature_cols: List[str]) -> np.ndarray:
-        """特徴量を作成（文字n-gram + 数値特徴量）"""
+        """特徴量を作成（カラム別文字n-gram + 数値特徴量）"""
         try:
-            # テキスト特徴量の正規化と結合
-            text_features = []
-            for _, row in df.iterrows():
-                text_parts = []
-                for col in feature_cols:
-                    if col in ['price_numeric', 'volume_numeric', 'count_numeric']:
-                        continue
-                    text_parts.append(self.normalize_text(row.get(col, '')))
-                text_features.append(' '.join(text_parts))
+            all_features = []
+            all_feature_names = []
 
-            if self.vectorizer is None:
-                # 文字n-gramベースのTF-IDFベクトライザー
-                self.vectorizer = TfidfVectorizer(
-                    analyzer='char',
-                    ngram_range=(2, 4),
-                    max_features=2000,
-                    min_df=2,
-                    max_df=0.9
-                )
-                text_matrix = self.vectorizer.fit_transform(text_features).toarray()
+            # カラム別に特徴量を作成（どのカラムから来たかわかるように）
+            for col in feature_cols:
+                if col in ['price_numeric', 'volume_numeric', 'count_numeric']:
+                    continue
 
-                # 特徴量名を保存（可視化用）
-                self.feature_names = list(self.vectorizer.get_feature_names_out())
-            else:
-                text_matrix = self.vectorizer.transform(text_features).toarray()
+                # このカラムのテキストを抽出
+                col_texts = [self.normalize_text(row.get(col, '')) for _, row in df.iterrows()]
+
+                # カラム専用のベクトライザーキー
+                vec_key = f'vec_{col}'
+
+                if vec_key not in self.__dict__ or self.__dict__[vec_key] is None:
+                    # カラム専用のベクトライザーを作成
+                    vectorizer = TfidfVectorizer(
+                        analyzer='char',
+                        ngram_range=(2, 4),
+                        max_features=200,  # カラムごとに200特徴量
+                        min_df=1,
+                        max_df=0.9
+                    )
+                    col_matrix = vectorizer.fit_transform(col_texts).toarray()
+                    setattr(self, vec_key, vectorizer)
+
+                    # 特徴量名にカラム名のプレフィックスを付ける
+                    col_feature_names = [f"{col}_{name}" for name in vectorizer.get_feature_names_out()]
+                    all_feature_names.extend(col_feature_names)
+                else:
+                    vectorizer = getattr(self, vec_key)
+                    col_matrix = vectorizer.transform(col_texts).toarray()
+
+                all_features.append(col_matrix)
 
             # 数値特徴量を追加
             numeric_features = []
@@ -340,13 +349,18 @@ class ProductClassifierWeb:
 
             if numeric_features:
                 numeric_matrix = np.hstack(numeric_features)
-                features = np.hstack([text_matrix, numeric_matrix])
+                all_features.append(numeric_matrix)
+                all_feature_names.extend(numeric_names)
 
-                # 数値特徴量名も追加
-                if not numeric_names or len(self.feature_names) == len(self.vectorizer.get_feature_names_out()):
-                    self.feature_names.extend(numeric_names)
+            # 全ての特徴量を結合
+            if all_features:
+                features = np.hstack(all_features)
             else:
-                features = text_matrix
+                features = np.array([])
+
+            # 特徴量名を保存（初回のみ）
+            if not hasattr(self, 'feature_names') or self.feature_names is None or len(self.feature_names) == 0:
+                self.feature_names = all_feature_names
 
             return features
 
@@ -850,6 +864,71 @@ class ProductClassifierWeb:
             logger.error(f"特徴量重要度取得エラー: {e}")
             return None
 
+    def get_column_level_importances(self) -> Optional[Dict[str, Dict[str, float]]]:
+        """カラム単位で特徴量重要度を集計
+
+        Returns:
+            {
+                'predicted_category': {
+                    'product_name': 0.35,
+                    'standard': 0.25,
+                    'manufacturer': 0.20,
+                    ...
+                },
+                ...
+            }
+        """
+        try:
+            if not self.is_trained or not self.classifier:
+                return None
+
+            all_importances = self.classifier.get_all_feature_importances()
+
+            if not all_importances:
+                return None
+
+            result = {}
+            for target_col, importances in all_importances.items():
+                if importances is None or len(importances) == 0:
+                    continue
+
+                # カラム別に重要度を集計
+                column_importance = {}
+
+                for i, importance in enumerate(importances):
+                    if i >= len(self.feature_names):
+                        continue
+
+                    feature_name = self.feature_names[i]
+
+                    # 特徴量名からカラム名を抽出（"カラム名_特徴" の形式）
+                    if '_' in feature_name:
+                        col_name = feature_name.split('_')[0]
+                        if col_name not in column_importance:
+                            column_importance[col_name] = 0.0
+                        column_importance[col_name] += float(importance)
+                    else:
+                        # 数値特徴量など（カラム名そのもの）
+                        if feature_name not in column_importance:
+                            column_importance[feature_name] = 0.0
+                        column_importance[feature_name] += float(importance)
+
+                # 重要度の合計で正規化
+                total = sum(column_importance.values())
+                if total > 0:
+                    column_importance = {k: v/total for k, v in column_importance.items()}
+
+                # 重要度でソート
+                column_importance = dict(sorted(column_importance.items(), key=lambda x: x[1], reverse=True))
+
+                result[target_col] = column_importance
+
+            return result
+
+        except Exception as e:
+            logger.error(f"カラム別重要度取得エラー: {e}")
+            return None
+
     def calculate_shap_values(
         self,
         sample_df: pd.DataFrame,
@@ -1158,6 +1237,7 @@ def process_product_classification():
             # 機械学習による予測
             ml_results_list = []
             feature_importances = None
+            column_importances = None
 
             if len(jan_unmatched_list) > 0 and len(jan_matched_list) > 0:
                 logger.info("機械学習モデル訓練開始...")
@@ -1183,8 +1263,9 @@ def process_product_classification():
                 # モデル訓練
                 classifier.train(train_df, available_features, target_cols, use_hierarchical=True)
 
-                # 特徴量重要度を取得
+                # 特徴量重要度を取得（詳細版とカラム単位版）
                 feature_importances = classifier.get_feature_importances()
+                column_importances = classifier.get_column_level_importances()
 
                 # 予測実行
                 logger.info(f"ML予測実行中: {len(jan_unmatched_list)}件...")
@@ -1331,7 +1412,8 @@ def process_product_classification():
                 'all_results': formatted_results,
                 'result_filename': result_filename,
                 'validation_results': validation_results,
-                'feature_importances': feature_importances  # 特徴量重要度追加
+                'feature_importances': feature_importances,  # 詳細版（n-gramレベル）
+                'column_importances': column_importances  # カラム単位版（NEW）
             }
 
             return jsonify(response_data)

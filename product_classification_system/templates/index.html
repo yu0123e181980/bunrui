@@ -828,16 +828,29 @@
             </div>
 
             <div class="importance-content">
+                <!-- カラム単位の貢献度（NEW） -->
                 <div class="importance-tab-content active" id="importance-category">
+                    <h3 style="color: #10b981; margin-bottom: 10px;">📊 カラム単位の予測貢献度</h3>
+                    <canvas id="importanceChartCategoryCol"></canvas>
+                    <h3 style="color: #60a5fa; margin-top: 30px; margin-bottom: 10px;">🔬 詳細特徴量（上位20件）</h3>
                     <canvas id="importanceChartCategory"></canvas>
                 </div>
                 <div class="importance-tab-content" id="importance-subcategory">
+                    <h3 style="color: #10b981; margin-bottom: 10px;">📊 カラム単位の予測貢献度</h3>
+                    <canvas id="importanceChartSubcategoryCol"></canvas>
+                    <h3 style="color: #60a5fa; margin-top: 30px; margin-bottom: 10px;">🔬 詳細特徴量（上位20件）</h3>
                     <canvas id="importanceChartSubcategory"></canvas>
                 </div>
                 <div class="importance-tab-content" id="importance-segment">
+                    <h3 style="color: #10b981; margin-bottom: 10px;">📊 カラム単位の予測貢献度</h3>
+                    <canvas id="importanceChartSegmentCol"></canvas>
+                    <h3 style="color: #60a5fa; margin-top: 30px; margin-bottom: 10px;">🔬 詳細特徴量（上位20件）</h3>
                     <canvas id="importanceChartSegment"></canvas>
                 </div>
                 <div class="importance-tab-content" id="importance-subsegment">
+                    <h3 style="color: #10b981; margin-bottom: 10px;">📊 カラム単位の予測貢献度</h3>
+                    <canvas id="importanceChartSubsegmentCol"></canvas>
+                    <h3 style="color: #60a5fa; margin-top: 30px; margin-bottom: 10px;">🔬 詳細特徴量（上位20件）</h3>
                     <canvas id="importanceChartSubsegment"></canvas>
                 </div>
             </div>
@@ -1135,6 +1148,11 @@
                         document.getElementById('featureImportanceSection').style.display = 'block';
                     }
 
+                    // カラム単位の重要度があれば表示（NEW）
+                    if (data.column_importances) {
+                        displayColumnImportances(data.column_importances);
+                    }
+
                     elements.resultsSection.classList.add('visible');
                     elements.progressSection.classList.remove('visible');
                 }, 1000);
@@ -1400,6 +1418,107 @@
                     // 対応するコンテンツを表示
                     const target = tab.getAttribute('data-target');
                     document.getElementById(`importance-${target}`).classList.add('active');
+                });
+            });
+        }
+
+        // カラム単位の重要度を表示（NEW）
+        function displayColumnImportances(columnImportances) {
+            if (!columnImportances) {
+                return;
+            }
+
+            const targetMap = {
+                'predicted_category': { id: 'CategoryCol', label: 'カテゴリー' },
+                'predicted_subcategory': { id: 'SubcategoryCol', label: 'サブカテゴリー' },
+                'predicted_segment': { id: 'SegmentCol', label: 'セグメント' },
+                'predicted_subsegment': { id: 'SubsegmentCol', label: 'サブセグメント' }
+            };
+
+            // カラム名の日本語マッピング
+            const columnNameMap = {
+                'product_name': '商品名',
+                'standard': '規格',
+                'manufacturer': 'メーカー',
+                'container': '容器',
+                'price_numeric': '平均価格',
+                'existing_category': '大分類',
+                'existing_subcategory': '中分類',
+                'existing_segment': '小分類',
+                'existing_subsegment': '細分類'
+            };
+
+            Object.keys(targetMap).forEach(targetCol => {
+                if (!columnImportances[targetCol]) {
+                    return;
+                }
+
+                const importanceData = columnImportances[targetCol];
+                const columns = Object.keys(importanceData).map(col => columnNameMap[col] || col);
+                const importances = Object.values(importanceData).map(v => (v * 100).toFixed(2)); // パーセント表示
+
+                const canvasId = `importanceChart${targetMap[targetCol].id}`;
+                const canvas = document.getElementById(canvasId);
+
+                if (!canvas) {
+                    console.warn(`Canvas ${canvasId} not found`);
+                    return;
+                }
+
+                const ctx = canvas.getContext('2d');
+
+                // 既存のチャートがあれば破棄
+                if (importanceCharts[canvasId]) {
+                    importanceCharts[canvasId].destroy();
+                }
+
+                // 横棒グラフを作成
+                importanceCharts[canvasId] = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: columns,
+                        datasets: [{
+                            label: '貢献度 (%)',
+                            data: importances,
+                            backgroundColor: 'rgba(16, 185, 129, 0.6)',
+                            borderColor: 'rgba(16, 185, 129, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',  // 横棒グラフ
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: `${targetMap[targetCol].label}予測へのカラム貢献度`,
+                                color: '#10b981',
+                                font: { size: 16 }
+                            },
+                            legend: {
+                                display: false
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: '貢献度 (%)',
+                                    color: '#94a3b8'
+                                },
+                                ticks: { color: '#94a3b8' },
+                                grid: { color: 'rgba(16, 185, 129, 0.2)' }
+                            },
+                            y: {
+                                ticks: {
+                                    color: '#94a3b8',
+                                    font: { size: 12 }
+                                },
+                                grid: { color: 'rgba(16, 185, 129, 0.1)' }
+                            }
+                        }
+                    }
                 });
             });
         }
