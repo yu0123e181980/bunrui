@@ -1279,6 +1279,9 @@ def process_product_classification():
 
             output_df = output_df.rename(columns=column_rename)
 
+            # CSV保存前にディレクトリが存在することを確認
+            os.makedirs(RESULTS_FOLDER, exist_ok=True)
+
             # CSV保存（UTF-8 BOM付き：Excelで文字化けしないように）
             output_df.to_csv(result_path, index=False, encoding='utf-8-sig')
 
